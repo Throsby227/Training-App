@@ -805,6 +805,24 @@ function switchView(name, btn) {
 }
 
 init();
+
+// Service Worker — auto-update when new version is deployed
+if('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      newWorker.addEventListener('statechange', () => {
+        if(newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          // New version available — reload silently
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            window.location.reload();
+          });
+          newWorker.postMessage({ action: 'skipWaiting' });
+        }
+      });
+    });
+  });
+}
 </script>
 </body>
 </html>

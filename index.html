@@ -162,7 +162,7 @@
 <body>
 
 <header>
-  <div class="logo">531 <span>/ MALI</span></div>
+  <div class="logo" id="appLogo">Trainingsplan</div>
   <div class="date-badge" id="hDate"></div>
 </header>
 
@@ -198,6 +198,13 @@
   <!-- SETTINGS -->
   <div class="view" id="view-settings">
     <div class="sett-area">
+      <div class="sett-group">
+        <div class="sett-group-title">Allgemein</div>
+        <div class="sett-row">
+          <div><div class="sett-lbl">Name</div><div class="sett-sub">Wird im Header angezeigt</div></div>
+          <input type="text" class="sett-input" id="nameInput" placeholder="Name" style="width:110px;font-size:.9rem;font-family:'Barlow',sans-serif;font-weight:500">
+        </div>
+      </div>
       <div class="sett-group">
         <div class="sett-group-title">Maximalgewichte (kg)</div>
         <div id="maxFields"></div>
@@ -276,6 +283,7 @@ function defaultState() {
     mode: '3x5',
     session: 0,
     increment: 2.5,
+    userName: '',
     cycles: { '3x5': 1, '531': 1 },
     maxWeights: { military:65, deadlift:182.5, bench:110, squat:165 },
     log: [],
@@ -339,10 +347,20 @@ function showToast(msg, cls='') {
 // ──────────────────────────────────────────────────────────
 // INIT
 // ──────────────────────────────────────────────────────────
+function renderHeader() {
+  const logo = document.getElementById('appLogo');
+  if(S.userName) {
+    logo.innerHTML = `Trainingsplan <span>/ ${S.userName.toUpperCase()}</span>`;
+  } else {
+    logo.innerHTML = `Trainingsplan`;
+  }
+}
+
 function init() {
   const d = new Date();
   document.getElementById('hDate').innerHTML =
     d.toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'short'});
+  renderHeader();
   syncModeTabs();
   renderCycleHeader();
   renderSessRow();
@@ -570,11 +588,44 @@ function renderHistory() {
   const week   = S.log.filter(l => (Date.now()-new Date(l.date)) < 7*86400000).length;
   const greens = S.log.filter(l => l.result==='g').length;
 
+  // Streak: consecutive calendar weeks with at least one entry, counting back from now
+  // Resets to 0 if the most recent entry is more than 7 days ago
+  function calcStreak() {
+    if(!S.log.length) return 0;
+    const mostRecent = new Date(S.log[0].date);
+    if((Date.now() - mostRecent) > 7 * 86400000) return 0;
+    // Get unique ISO week strings from log
+    const weeks = new Set(S.log.map(l => {
+      const d = new Date(l.date);
+      // ISO week key: year-week
+      const t = new Date(d); t.setHours(0,0,0,0);
+      t.setDate(t.getDate() + 3 - (t.getDay()+6)%7);
+      const w = new Date(t.getFullYear(),0,4);
+      const wn = 1 + Math.round(((t-w)/86400000 - 3 + (w.getDay()+6)%7)/7);
+      return `${t.getFullYear()}-${wn}`;
+    }));
+    // Count consecutive weeks back from current week
+    const now = new Date();
+    let streak = 0;
+    for(let i = 0; i < 104; i++) {
+      const d = new Date(now); d.setDate(d.getDate() - i*7);
+      const t = new Date(d); t.setHours(0,0,0,0);
+      t.setDate(t.getDate() + 3 - (t.getDay()+6)%7);
+      const w = new Date(t.getFullYear(),0,4);
+      const wn = 1 + Math.round(((t-w)/86400000 - 3 + (w.getDay()+6)%7)/7);
+      const key = `${t.getFullYear()}-${wn}`;
+      if(weeks.has(key)) streak++;
+      else if(i > 0) break; // gap found
+    }
+    return streak;
+  }
+  const streak = calcStreak();
+
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-card"><div class="stat-lbl">Einheiten</div><div class="stat-val">${total}</div></div>
     <div class="stat-card"><div class="stat-lbl">Diese Woche</div><div class="stat-val">${week}</div></div>
     <div class="stat-card"><div class="stat-lbl">Erfolgsrate</div><div class="stat-val">${total?Math.round(greens/total*100):0}<span class="stat-unit">%</span></div></div>
-    <div class="stat-card"><div class="stat-lbl">Zyklus (${S.mode})</div><div class="stat-val">${cycle()}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Streak</div><div class="stat-val">${streak}<span class="stat-unit">W</span></div></div>
   `;
 
   // Exercise filter buttons
@@ -720,6 +771,7 @@ function renderHistList() {
 // SETTINGS
 // ──────────────────────────────────────────────────────────
 function renderSettings() {
+  document.getElementById('nameInput').value = S.userName || '';
   document.getElementById('maxFields').innerHTML = EXERCISES.map(ex => `
     <div class="sett-row">
       <div><div class="sett-lbl">${EX_LABEL[ex]}</div><div class="sett-sub">Aktuelles Max (kg)</div></div>
@@ -729,6 +781,7 @@ function renderSettings() {
 }
 
 function saveSettings() {
+  S.userName = (document.getElementById('nameInput').value || '').trim();
   EXERCISES.forEach(ex => {
     const v = parseFloat(document.getElementById('mx-'+ex).value);
     if(!isNaN(v)) { S.maxWeights[ex] = v; }
@@ -736,6 +789,7 @@ function saveSettings() {
   const inc = parseFloat(document.getElementById('incInput').value);
   if(!isNaN(inc) && inc > 0) S.increment = inc;
   saveS();
+  renderHeader();
   showToast('Gespeichert');
   renderSession();
 }

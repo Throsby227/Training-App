@@ -153,8 +153,8 @@
 
   main { padding-bottom: 68px; }
 
-  .toast { position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%) translateY(60px); background: var(--green); color: #0d0d0f; padding: 9px 20px; border-radius: 30px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: .85rem; letter-spacing: .06em; text-transform: uppercase; z-index: 999; transition: transform .3s cubic-bezier(.34,1.56,.64,1); box-shadow: 0 4px 20px rgba(74,222,128,.3); white-space: nowrap; pointer-events: none; }
-  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; background: var(--green); color: #0d0d0f; padding: 9px 20px; border-radius: 30px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: .85rem; letter-spacing: .06em; text-transform: uppercase; z-index: 999; box-shadow: 0 4px 20px rgba(74,222,128,.3); white-space: nowrap; }
+  .toast.show { opacity: 1; }
   .toast.warn { background: var(--yellow); }
   .toast.err  { background: var(--red); }
 </style>
@@ -276,13 +276,10 @@ function defaultState() {
     mode: '3x5',
     session: 0,
     increment: 2.5,
-    cycle: 1,
+    cycles: { '3x5': 1, '531': 1 },
     maxWeights: { military:65, deadlift:182.5, bench:110, squat:165 },
     log: [],
-    // results[mode][cycle][sess] = 'g'|'y'|'r'  (not date-based, but cycle-based)
-    // cycleResults[mode][cycle][sess] = result
     cycleResults: {},
-    // keep old results for daily reset compat
     results: {},
   };
 }
@@ -295,20 +292,26 @@ function r25(v)   { return Math.round(v / 2.5) * 2.5; }
 function fmtW(v)  { return v + 'kg'; }
 function today()  { return new Date().toISOString().slice(0,10); }
 
+// Mode-aware cycle accessor
+function cycle() { return (S.cycles || {})[S.mode] || 1; }
+function incrCycle() {
+  if(!S.cycles) S.cycles = {};
+  S.cycles[S.mode] = (S.cycles[S.mode] || 1) + 1;
+}
+
 function getResult(mode, sess) {
-  return (((S.cycleResults || {})[mode] || {})[S.cycle] || {})[sess] || null;
+  return (((S.cycleResults || {})[mode] || {})[cycle()] || {})[sess] || null;
 }
 function saveResult(mode, sess, val) {
-  if(!S.cycleResults)              S.cycleResults = {};
-  if(!S.cycleResults[mode])        S.cycleResults[mode] = {};
-  if(!S.cycleResults[mode][S.cycle]) S.cycleResults[mode][S.cycle] = {};
-  S.cycleResults[mode][S.cycle][sess] = val;
+  if(!S.cycleResults)               S.cycleResults = {};
+  if(!S.cycleResults[mode])         S.cycleResults[mode] = {};
+  if(!S.cycleResults[mode][cycle()]) S.cycleResults[mode][cycle()] = {};
+  S.cycleResults[mode][cycle()][sess] = val;
   saveS();
 }
 
-// Check if all 4 exercises are done (any color) in current cycle
 function allDone(mode) {
-  const cr = ((S.cycleResults || {})[mode] || {})[S.cycle] || {};
+  const cr = ((S.cycleResults || {})[mode] || {})[cycle()] || {};
   return [0,1,2,3].every(i => !!cr[i]);
 }
 
@@ -321,12 +324,16 @@ function setAW(mode, sess, idx, val) { try { localStorage.setItem(aKey(mode,sess
 
 // Main weights are always calculated from max — no manual overrides needed
 
+let _toastTid = null;
 function showToast(msg, cls='') {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast ' + cls + ' show';
-  clearTimeout(t._tid);
-  t._tid = setTimeout(()=>t.classList.remove('show'), 2400);
+  if(_toastTid) clearTimeout(_toastTid);
+  _toastTid = setTimeout(() => {
+    t.classList.remove('show');
+    _toastTid = null;
+  }, 2500);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -350,7 +357,7 @@ function syncModeTabs() {
 }
 
 function renderCycleHeader() {
-  const cr = ((S.cycleResults || {})[S.mode] || {})[S.cycle] || {};
+  const cr = ((S.cycleResults || {})[S.mode] || {})[cycle()] || {};
   const done = [0,1,2,3].filter(i => !!cr[i]).length;
   const colMap = { g:'var(--green)', y:'var(--yellow)', r:'var(--red)' };
   const dots = [0,1,2,3].map(i => {
@@ -361,7 +368,7 @@ function renderCycleHeader() {
   document.getElementById('cycleHeader').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
       <div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.4rem;letter-spacing:.06em;color:var(--accent)">ZYKLUS ${S.cycle}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.4rem;letter-spacing:.06em;color:var(--accent)">ZYKLUS ${cycle()}</div>
         <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${done} von 4 Übungen erledigt</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">${dots}</div>
@@ -393,8 +400,8 @@ function selectSess(i) {
 // ──────────────────────────────────────────────────────────
 function renderSession() {
   const { mode, session: sess } = S;
-  const ex   = EXERCISES[sess];
-  const max  = S.maxWeights[ex];
+  const ex  = EXERCISES[sess];
+  const max = S.maxWeights[ex];
 
   // ── Main sets — always calculated fresh from max, no manual override ──
   let setsHTML = '';
@@ -522,9 +529,9 @@ function handleResult(res) {
 
   // Check if all 4 exercises now done → advance cycle
   if(allDone(mode)) {
-    S.cycle += 1;
+    incrCycle();
     saveS();
-    showToast(`Zyklus ${S.cycle} gestartet! 💪`);
+    showToast(`Zyklus ${cycle()} gestartet! 💪`);
     setTimeout(() => { renderCycleHeader(); renderSessRow(); }, 300);
   } else {
     renderCycleHeader();
@@ -567,7 +574,7 @@ function renderHistory() {
     <div class="stat-card"><div class="stat-lbl">Einheiten</div><div class="stat-val">${total}</div></div>
     <div class="stat-card"><div class="stat-lbl">Diese Woche</div><div class="stat-val">${week}</div></div>
     <div class="stat-card"><div class="stat-lbl">Erfolgsrate</div><div class="stat-val">${total?Math.round(greens/total*100):0}<span class="stat-unit">%</span></div></div>
-    <div class="stat-card"><div class="stat-lbl">Zyklus</div><div class="stat-val">${S.cycle}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Zyklus (${S.mode})</div><div class="stat-val">${cycle()}</div></div>
   `;
 
   // Exercise filter buttons

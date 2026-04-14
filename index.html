@@ -323,8 +323,8 @@ function allDone(mode) {
   return [0,1,2,3].every(i => !!cr[i]);
 }
 
-// Assist weight: persistent per mode+sess+idx
-function aKey(mode, sess, idx) { return `aw2_${mode}_${sess}_${idx}`; }
+// Assist weight: persistent per sess+idx only (shared across modes)
+function aKey(mode, sess, idx) { return `aw2_${sess}_${idx}`; }
 function getAW(mode, sess, idx) {
   try { const v=localStorage.getItem(aKey(mode,sess,idx)); return v!==null?parseFloat(v):20; } catch{ return 20; }
 }

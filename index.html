@@ -145,6 +145,10 @@
   .sett-sub { font-size: .7rem; color: var(--muted); margin-top: 2px; }
   .sett-input { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1rem; width: 82px; text-align: right; }
   .sett-save { width: 100%; padding: 13px; background: var(--accent); color: #0d0d0f; border: none; border-radius: 8px; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 1rem; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+  .sett-btn { width: 32px; height: 32px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 1.15rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .1s; }
+  .sett-btn:first-child { border-radius: 6px 0 0 6px; }
+  .sett-btn:last-child  { border-radius: 0 6px 6px 0; }
+  .sett-btn:active { background: var(--accent); color: #0d0d0f; }
 
   .bnav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--bg); border-top: 1px solid var(--border); z-index: 50; }
   .bnav-btn { flex: 1; padding: 9px 4px 11px; display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: .58rem; letter-spacing: .06em; text-transform: uppercase; font-family: 'Barlow', sans-serif; font-weight: 500; transition: color .15s; }
@@ -211,10 +215,33 @@
         <div id="maxFields"></div>
       </div>
       <div class="sett-group">
-        <div class="sett-group-title">Progression</div>
+        <div class="sett-group-title">Progression (3×5 / 5/3/1)</div>
         <div class="sett-row">
           <div><div class="sett-lbl">Steigerung</div><div class="sett-sub">kg bei Grün</div></div>
-          <input type="number" class="sett-input" id="incInput" step="1.25" min="1.25">
+          <div class="w-ctrl">
+            <button class="sett-btn" onclick="adjSett('incInput',-2.5)">−</button>
+            <div class="w-val" id="incInput" style="min-width:58px;border-radius:0">2.5kg</div>
+            <button class="sett-btn" onclick="adjSett('incInput',2.5)">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="sett-group">
+        <div class="sett-group-title">Progression Wendler</div>
+        <div class="sett-row">
+          <div><div class="sett-lbl">Oberkörper</div><div class="sett-sub">Military & Bench (kg)</div></div>
+          <div class="w-ctrl">
+            <button class="sett-btn" onclick="adjSett('incWendlerUpper',-2.5)">−</button>
+            <div class="w-val" id="incWendlerUpper" style="min-width:58px;border-radius:0">2.5kg</div>
+            <button class="sett-btn" onclick="adjSett('incWendlerUpper',2.5)">+</button>
+          </div>
+        </div>
+        <div class="sett-row">
+          <div><div class="sett-lbl">Unterkörper</div><div class="sett-sub">Squat & Deadlift (kg)</div></div>
+          <div class="w-ctrl">
+            <button class="sett-btn" onclick="adjSett('incWendlerLower',-2.5)">−</button>
+            <div class="w-val" id="incWendlerLower" style="min-width:58px;border-radius:0">5kg</div>
+            <button class="sett-btn" onclick="adjSett('incWendlerLower',2.5)">+</button>
+          </div>
         </div>
       </div>
       <button class="sett-save" onclick="saveSettings()">Speichern</button>
@@ -284,6 +311,8 @@ function defaultState() {
     mode: '3x5',
     session: 0,
     increment: 2.5,
+    incrementWendlerUpper: 2.5,
+    incrementWendlerLower: 5,
     userName: '',
     cycles: { '3x5': 1, '531': 1, 'wendler': 1 },
     // Wendler tracks week within cycle (1-4) per exercise session
@@ -570,8 +599,9 @@ function handleResult(res) {
     if(!prev) {
       // First time rating this exercise this week — advance to next week
       if(ww === 3 && res === 'g') {
-        // Week 3 (max effort) green → increase max
-        const inc = S.increment || 2.5;
+        // Week 3 green → increase max (5kg lower body, 2.5kg upper)
+        const isLower = ex === 'deadlift' || ex === 'squat';
+        const inc = isLower ? (S.incrementWendlerLower || 5) : (S.incrementWendlerUpper || 2.5);
         S.maxWeights[ex] = Math.round((S.maxWeights[ex] + inc) * 100) / 100;
         showToast(`Woche 3 ✓ +${inc}kg → TM ${fmtW(S.maxWeights[ex])}`);
         setTimeout(() => { renderSession(); renderSettings(); }, 350);
@@ -823,24 +853,42 @@ function renderHistList() {
 // ──────────────────────────────────────────────────────────
 // SETTINGS
 // ──────────────────────────────────────────────────────────
+function adjSett(id, delta) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  let v = parseFloat(el.textContent);
+  v = Math.max(2.5, Math.round((v + delta) * 100) / 100);
+  el.textContent = v + 'kg';
+}
+
 function renderSettings() {
   document.getElementById('nameInput').value = S.userName || '';
   document.getElementById('maxFields').innerHTML = EXERCISES.map(ex => `
     <div class="sett-row">
       <div><div class="sett-lbl">${EX_LABEL[ex]}</div><div class="sett-sub">Aktuelles Max (kg)</div></div>
-      <input type="number" class="sett-input" id="mx-${ex}" value="${S.maxWeights[ex]}" step="2.5" min="20">
+      <div class="w-ctrl">
+        <button class="sett-btn" onclick="adjSett('mx-${ex}',-2.5)">−</button>
+        <div class="w-val" id="mx-${ex}" style="min-width:62px;border-radius:0">${S.maxWeights[ex]}kg</div>
+        <button class="sett-btn" onclick="adjSett('mx-${ex}',2.5)">+</button>
+      </div>
     </div>`).join('');
-  document.getElementById('incInput').value = S.increment;
+  document.getElementById('incInput').textContent = (S.increment || 2.5) + 'kg';
+  document.getElementById('incWendlerUpper').textContent = (S.incrementWendlerUpper || 2.5) + 'kg';
+  document.getElementById('incWendlerLower').textContent = (S.incrementWendlerLower || 5) + 'kg';
 }
 
 function saveSettings() {
   S.userName = (document.getElementById('nameInput').value || '').trim();
   EXERCISES.forEach(ex => {
-    const v = parseFloat(document.getElementById('mx-'+ex).value);
-    if(!isNaN(v)) { S.maxWeights[ex] = v; }
+    const v = parseFloat(document.getElementById('mx-'+ex).textContent);
+    if(!isNaN(v)) S.maxWeights[ex] = v;
   });
-  const inc = parseFloat(document.getElementById('incInput').value);
+  const inc = parseFloat(document.getElementById('incInput').textContent);
   if(!isNaN(inc) && inc > 0) S.increment = inc;
+  const wu = parseFloat(document.getElementById('incWendlerUpper').textContent);
+  if(!isNaN(wu) && wu > 0) S.incrementWendlerUpper = wu;
+  const wl = parseFloat(document.getElementById('incWendlerLower').textContent);
+  if(!isNaN(wl) && wl > 0) S.incrementWendlerLower = wl;
   saveS();
   renderHeader();
   showToast('Gespeichert');

@@ -172,6 +172,7 @@
     <div class="mode-tabs">
       <button class="mode-tab" id="tab-3x5" onclick="setMode('3x5')">3×5</button>
       <button class="mode-tab" id="tab-531" onclick="setMode('531')">5/3/1</button>
+      <button class="mode-tab" id="tab-wendler" onclick="setMode('wendler')">Wendler</button>
     </div>
     <div class="workout-area">
       <div id="cycleHeader"></div>
@@ -284,7 +285,9 @@ function defaultState() {
     session: 0,
     increment: 2.5,
     userName: '',
-    cycles: { '3x5': 1, '531': 1 },
+    cycles: { '3x5': 1, '531': 1, 'wendler': 1 },
+    // Wendler tracks week within cycle (1-4) per exercise session
+    wendlerWeek: { military: 1, deadlift: 1, bench: 1, squat: 1 },
     maxWeights: { military:65, deadlift:182.5, bench:110, squat:165 },
     log: [],
     cycleResults: {},
@@ -305,6 +308,16 @@ function cycle() { return (S.cycles || {})[S.mode] || 1; }
 function incrCycle() {
   if(!S.cycles) S.cycles = {};
   S.cycles[S.mode] = (S.cycles[S.mode] || 1) + 1;
+}
+
+// Wendler: track which week (1-4) each exercise is on
+function wendlerWeek(ex) {
+  return ((S.wendlerWeek || {})[ex] || 1);
+}
+function advanceWendlerWeek(ex) {
+  if(!S.wendlerWeek) S.wendlerWeek = { military:1, deadlift:1, bench:1, squat:1 };
+  const cur = S.wendlerWeek[ex] || 1;
+  S.wendlerWeek[ex] = cur >= 4 ? 1 : cur + 1;
 }
 
 function getResult(mode, sess) {
@@ -372,6 +385,7 @@ function init() {
 function syncModeTabs() {
   document.getElementById('tab-3x5').classList.toggle('active', S.mode==='3x5');
   document.getElementById('tab-531').classList.toggle('active', S.mode==='531');
+  document.getElementById('tab-wendler').classList.toggle('active', S.mode==='wendler');
 }
 
 function renderCycleHeader() {
@@ -383,11 +397,20 @@ function renderCycleHeader() {
     const col = r ? colMap[r] : 'var(--border)';
     return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col}"></span>`;
   }).join('');
+
+  let subInfo = `${done} von 4 Übungen erledigt`;
+  if(S.mode === 'wendler') {
+    const ex = EXERCISES[S.session];
+    const ww = wendlerWeek(ex);
+    const wLabel = ['Woche 1 — 5×5','Woche 2 — 3×3','Woche 3 — 5/3/1','Woche 4 — Deload'][ww-1];
+    subInfo = `${EX_LABEL[ex]}: ${wLabel}`;
+  }
+
   document.getElementById('cycleHeader').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
       <div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.4rem;letter-spacing:.06em;color:var(--accent)">ZYKLUS ${cycle()}</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${done} von 4 Übungen erledigt</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${subInfo}</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">${dots}</div>
     </div>`;
@@ -414,6 +437,16 @@ function selectSess(i) {
 }
 
 // ──────────────────────────────────────────────────────────
+// WENDLER SCHEME
+// ──────────────────────────────────────────────────────────
+const WENDLER_WEEKS = [
+  { label:'Woche 1 — 5×5', sets:[{reps:'5',pct:.65},{reps:'5',pct:.75},{reps:'5+',pct:.85}] },
+  { label:'Woche 2 — 3×3', sets:[{reps:'3',pct:.70},{reps:'3',pct:.80},{reps:'3+',pct:.90}] },
+  { label:'Woche 3 — 5/3/1', sets:[{reps:'5',pct:.75},{reps:'3',pct:.85},{reps:'1+',pct:.95}] },
+  { label:'Woche 4 — Deload', sets:[{reps:'5',pct:.40},{reps:'5',pct:.50},{reps:'5',pct:.60}] },
+];
+
+// ──────────────────────────────────────────────────────────
 // RENDER SESSION
 // ──────────────────────────────────────────────────────────
 function renderSession() {
@@ -421,22 +454,32 @@ function renderSession() {
   const ex  = EXERCISES[sess];
   const max = S.maxWeights[ex];
 
-  // ── Main sets — always calculated fresh from max, no manual override ──
+  // ── Main sets ──
   let setsHTML = '';
+  let maxLabel = '';
+
   if(mode === '3x5') {
     const w = r25(max * 0.75);
-    for(let i=0;i<3;i++) {
-      setsHTML += buildSetRow(i, '5', w, false);
-    }
-  } else {
-    // 5/3/1: 80 / 90 / 100 %
+    for(let i=0;i<3;i++) setsHTML += buildSetRow(i, '5', w, false);
+    maxLabel = `Max ${fmtW(max)} → 75% = ${fmtW(w)}`;
+
+  } else if(mode === '531') {
     [
       { reps:'5', pct:.80, top:false },
       { reps:'3', pct:.90, top:false },
       { reps:'1', pct:1.0, top:true  },
-    ].forEach((d,i) => {
-      setsHTML += buildSetRow(i, d.reps, r25(max * d.pct), d.top);
+    ].forEach((d,i) => setsHTML += buildSetRow(i, d.reps, r25(max * d.pct), d.top));
+    maxLabel = `Max: ${fmtW(max)}`;
+
+  } else {
+    // Wendler
+    const ww = wendlerWeek(ex);
+    const scheme = WENDLER_WEEKS[ww - 1];
+    scheme.sets.forEach((d,i) => {
+      const isTop = d.reps.includes('+');
+      setsHTML += buildSetRow(i, d.reps, r25(max * d.pct), isTop);
     });
+    maxLabel = `TM ${fmtW(max)} · ${scheme.label}`;
   }
 
   // ── Traffic light ──
@@ -447,11 +490,6 @@ function renderSession() {
       <button class="tl-btn y${cur==='y'?' active':''}" onclick="handleResult('y')">~ Unsauber</button>
       <button class="tl-btn r${cur==='r'?' active':''}" onclick="handleResult('r')">✗ Nicht gesch.</button>
     </div>`;
-
-  // ── Max label ──
-  const maxLabel = mode==='3x5'
-    ? `Max ${fmtW(max)} → 75% = ${fmtW(r25(max*.75))}`
-    : `Max: ${fmtW(max)}`;
 
   // ── Assistants ──
   const assists = ASSISTANTS[ex];
@@ -520,32 +558,47 @@ function handleResult(res) {
 
   saveResult(mode, sess, res);
 
-  // Update button states
   document.querySelectorAll('.tl-btn').forEach(b => b.classList.remove('active'));
-  const idx = {g:0, y:1, r:2}[res];
-  document.querySelectorAll('.tl-btn')[idx].classList.add('active');
+  document.querySelectorAll('.tl-btn')[{g:0,y:1,r:2}[res]].classList.add('active');
   renderSessRow();
 
-  // Log entry on first result for this exercise this cycle
-  if(!prev) {
-    logEntry(mode, sess, ex, res);
-    saveS();
+  if(!prev) { logEntry(mode, sess, ex, res); saveS(); }
+
+  if(mode === 'wendler') {
+    // Wendler: progress max only after completing deload week (week 4) with green
+    const ww = wendlerWeek(ex);
+    if(!prev) {
+      // First time rating this exercise this week — advance to next week
+      if(ww === 3 && res === 'g') {
+        // Week 3 (max effort) green → increase max
+        const inc = S.increment || 2.5;
+        S.maxWeights[ex] = Math.round((S.maxWeights[ex] + inc) * 100) / 100;
+        showToast(`Woche 3 ✓ +${inc}kg → TM ${fmtW(S.maxWeights[ex])}`);
+        setTimeout(() => { renderSession(); renderSettings(); }, 350);
+      } else if(res === 'y') {
+        showToast('Gleiches Gewicht nächste Einheit', 'warn');
+      } else if(res === 'r') {
+        showToast('Gewicht beibehalten', 'err');
+      }
+      advanceWendlerWeek(ex);
+      saveS();
+    }
+  } else {
+    // 3x5 / 5/3/1 progression
+    if(res === 'g' && prev !== 'g') {
+      const inc = S.increment || 2.5;
+      S.maxWeights[ex] = Math.round((S.maxWeights[ex] + inc) * 100) / 100;
+      saveS();
+      showToast(`+${inc}kg → Max jetzt ${fmtW(S.maxWeights[ex])}`);
+      setTimeout(() => { renderSession(); renderSettings(); }, 350);
+    } else if(res === 'y' && !prev) {
+      showToast('Gleiches Gewicht nächste Einheit', 'warn');
+    } else if(res === 'r' && !prev) {
+      showToast('Gewicht beibehalten', 'err');
+    }
   }
 
-  // Progression only on green (and only if previously not green)
-  if(res === 'g' && prev !== 'g') {
-    const inc = S.increment || 2.5;
-    S.maxWeights[ex] = Math.round((S.maxWeights[ex] + inc) * 100) / 100;
-    saveS();
-    showToast(`+${inc}kg → Max jetzt ${fmtW(S.maxWeights[ex])}`);
-    setTimeout(() => { renderSession(); renderSettings(); }, 350);
-  } else if(res === 'y' && !prev) {
-    showToast('Gleiches Gewicht nächste Einheit', 'warn');
-  } else if(res === 'r' && !prev) {
-    showToast('Gewicht beibehalten', 'err');
-  }
-
-  // Check if all 4 exercises now done → advance cycle
+  // Advance cycle when all 4 exercises done
   if(allDone(mode)) {
     incrCycle();
     saveS();

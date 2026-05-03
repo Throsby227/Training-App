@@ -433,9 +433,9 @@ function renderDay() {
       <div class="weight-row">
         <div class="weight-lbl">Gewicht</div>
         <div class="w-ctrl">
-          <button class="w-btn" onclick="adjW('${ex.id}',-2.5)">−</button>
+          <button class="w-btn" onclick="adjW('${ex.id}',-1)">−</button>
           <div class="w-val" id="wv-${ex.id}">${w}kg</div>
-          <button class="w-btn" onclick="adjW('${ex.id}',2.5)">+</button>
+          <button class="w-btn" onclick="adjW('${ex.id}',1)">+</button>
         </div>
       </div>
       <div class="result-row">
@@ -451,7 +451,7 @@ function renderDay() {
 
 function adjW(exId, delta) {
   if(!S.weights) S.weights={};
-  S.weights[exId] = Math.max(0, r25((S.weights[exId]||20)+delta));
+  S.weights[exId] = Math.max(0, (S.weights[exId]||20)+delta);
   document.getElementById('wv-'+exId).textContent = S.weights[exId]+'kg';
   saveS();
 }
@@ -483,7 +483,7 @@ function handleResult(exId, res) {
   // Progression: increase weight on Good (first time only)
   if(res==='good' && prev!=='good') {
     const inc = S.increment||2.5;
-    S.weights[exId] = r25((S.weights[exId]||20)+inc);
+    S.weights[exId] = (S.weights[exId]||20) + inc;
     // Update display
     document.getElementById('wv-'+exId).textContent = S.weights[exId]+'kg';
     hint.textContent=`→ Nächstes Mal: ${fmtW(S.weights[exId])}`;

@@ -295,7 +295,7 @@ const ASSISTANTS = {
     { name:'Bicep Cable Curls',         scheme:'3×10' },
   ],
   squat: [
-    { name:'Leg Press',       scheme:'3×10' },
+    { name:'Leg Extensions',  scheme:'3×10' },
     { name:'Leg Curl',        scheme:'3×10' },
     { name:'Back Extensions', scheme:'3×10' },
     { name:'Calves',          scheme:'3×20' },
@@ -571,7 +571,7 @@ function adjAW(idx, dir) {
   const el = document.getElementById('aw-'+idx);
   if(!el) return;
   let v = parseFloat(el.textContent);
-  v = Math.max(0, v + dir * 2.5);
+  v = Math.max(0, v + dir * 1);
   el.textContent = v + 'kg';
   setAW(mode, sess, idx, v);
 }
